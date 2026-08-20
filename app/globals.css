@@ -1,0 +1,317 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   THEME LOCK: dark only, one violet accent, one corner rule (sharp).
+   z-index scale: canvas -1, content 10, nav 50, menu 55, grain 60.
+------------------------------------------------------------------- */
+
+@theme {
+  --color-void: #0a0710;
+  --color-surf: #14101f;
+  --color-surf-2: #1e1830;
+  --color-line: #2a2340;
+  --color-line-control: #6e6389;
+  --color-muted: #8f8aa6;
+  --color-text: #edeaf5;
+  --color-accent: #8b5cf6;
+  --color-glow: #a78bfa;
+
+  --font-display: var(--font-syne), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-void);
+  }
+
+  /* Only ever set by the cursor component, and only on fine pointers, so
+     nothing is hidden when JavaScript does not run. */
+  html.has-custom-cursor,
+  html.has-custom-cursor * {
+    cursor: none !important;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-glow);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  /* Layered surfaces. Depth comes from stacked translucency plus a lit
+     top edge, so panels read as physical rather than as flat fills. */
+  .panel {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgb(139 92 246 / 0.06), rgb(139 92 246 / 0) 55%),
+      var(--color-surf);
+    box-shadow: inset 0 1px 0 rgb(237 234 245 / 0.07);
+  }
+
+  .panel-deep {
+    position: relative;
+    background:
+      radial-gradient(120% 90% at 12% 0%, rgb(139 92 246 / 0.22), transparent 62%),
+      var(--color-surf-2);
+    box-shadow: inset 0 1px 0 rgb(237 234 245 / 0.09);
+  }
+
+  .lattice {
+    background-image:
+      linear-gradient(to right, rgb(237 234 245 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(237 234 245 / 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  /* ------------------------------------------------------------------
+     Interactive system. A skewed panel parked off the left edge wipes
+     across on hover while the label rolls to its duplicate. Both run on
+     transform only, and the global reduced-motion block flattens them.
+  ------------------------------------------------------------------- */
+  .btn {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    transition:
+      color 0.35s cubic-bezier(0.3, 1, 0.8, 1),
+      border-color 0.35s cubic-bezier(0.3, 1, 0.8, 1);
+  }
+
+  .btn::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: -2px;
+    bottom: -2px;
+    left: -14%;
+    width: 128%;
+    transform: translateX(-104%) skewX(-20deg);
+    transition: transform 0.52s cubic-bezier(0.3, 1, 0.8, 1);
+    pointer-events: none;
+  }
+
+  .btn:hover::before,
+  .btn:focus-visible::before {
+    transform: translateX(0) skewX(-20deg);
+  }
+
+  .btn:disabled::before {
+    transform: translateX(-104%) skewX(-20deg);
+  }
+
+  .btn-solid {
+    background-color: var(--color-accent);
+    color: var(--color-void);
+  }
+
+  .btn-solid::before {
+    background-color: var(--color-glow);
+  }
+
+  .btn-ghost {
+    border: 1px solid var(--color-line-control);
+    color: var(--color-text);
+  }
+
+  .btn-ghost::before {
+    background-color: var(--color-accent);
+  }
+
+  .btn-ghost:hover,
+  .btn-ghost:focus-visible {
+    color: var(--color-void);
+    border-color: var(--color-accent);
+  }
+
+  .btn-roll {
+    display: block;
+    overflow: hidden;
+    height: 1.4em;
+  }
+
+  .btn-roll-track {
+    display: block;
+    transition: transform 0.52s cubic-bezier(0.3, 1, 0.8, 1);
+  }
+
+  .btn:hover .btn-roll-track,
+  .btn:focus-visible .btn-roll-track {
+    transform: translateY(-1.4em);
+  }
+
+  .btn-roll-item {
+    display: block;
+    height: 1.4em;
+    line-height: 1.4;
+  }
+
+  .btn-icon {
+    transition: transform 0.45s cubic-bezier(0.3, 1, 0.8, 1);
+  }
+
+  .btn:hover .btn-icon,
+  .btn:focus-visible .btn-icon {
+    transform: translate(0.18em, 0.18em);
+  }
+
+  .btn:disabled .btn-icon {
+    transform: none;
+  }
+
+  /* Links get a rule that wipes in from the left and out to the right. */
+  .link-wipe {
+    position: relative;
+    display: inline-block;
+    transition: color 0.35s cubic-bezier(0.3, 1, 0.8, 1);
+  }
+
+  .link-wipe::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -0.22em;
+    height: 1px;
+    background-color: currentColor;
+    transform: scaleX(0);
+    transform-origin: right center;
+    transition: transform 0.45s cubic-bezier(0.3, 1, 0.8, 1);
+  }
+
+  .link-wipe:hover::after,
+  .link-wipe:focus-visible::after {
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+
+  /* Square icon buttons fill from below. */
+  .icon-btn {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 1px solid var(--color-line-control);
+    color: var(--color-muted);
+    transition:
+      color 0.35s cubic-bezier(0.3, 1, 0.8, 1),
+      border-color 0.35s cubic-bezier(0.3, 1, 0.8, 1);
+  }
+
+  .icon-btn::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: -1px;
+    background-color: var(--color-accent);
+    transform: translateY(101%);
+    transition: transform 0.45s cubic-bezier(0.3, 1, 0.8, 1);
+  }
+
+  .icon-btn:hover,
+  .icon-btn:focus-visible {
+    color: var(--color-void);
+    border-color: var(--color-accent);
+  }
+
+  .icon-btn:hover::before,
+  .icon-btn:focus-visible::before {
+    transform: translateY(0);
+  }
+
+  .stroked {
+    color: transparent;
+    -webkit-text-stroke: 1px var(--color-line-control);
+  }
+
+  .rule {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      var(--color-accent) 0%,
+      var(--color-line) 22%,
+      var(--color-line) 100%
+    );
+  }
+
+  .halo {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(90px);
+    background: rgb(139 92 246 / 0.3);
+    pointer-events: none;
+  }
+}
+
+/* React Three Fiber sets pointer-events auto on its own container, which
+   overrides a pointer-events-none parent and swallows clicks meant for the
+   UI underneath. Every decorative canvas carries this. */
+.webgl-inert,
+.webgl-inert * {
+  pointer-events: none !important;
+}
+
+/* Grain rides a fixed, pointer-events-none layer only. */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes ticker-slide {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+.ticker-track {
+  animation: ticker-slide 38s linear infinite;
+  will-change: transform;
+}
+
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .ticker-track {
+    animation: none;
+    will-change: auto;
+  }
+}
