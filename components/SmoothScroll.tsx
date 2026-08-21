@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Lenis from "lenis";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { isLoaderDone, onLoaderDone } from "@/lib/boot";
 import { useReducedMotionSafe } from "./useReducedMotionSafe";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -31,6 +32,14 @@ export default function SmoothScroll() {
 
     const lenis = new Lenis({ duration: 1.25, smoothWheel: true });
     const raf = (time: number) => lenis.raf(time * 1000);
+
+    // The loader holds the page at the top while it is up. Stopped rather
+    // than left running, so a wheel or a swipe is refused outright instead of
+    // being animated and then pulled back by the loader's pin a frame later.
+    // Lenis preventDefaults those gestures itself while stopped, and start()
+    // resyncs to the real position, which by then is the top.
+    if (!isLoaderDone()) lenis.stop();
+    const release = onLoaderDone(() => lenis.start());
 
     const onClick = (event: MouseEvent) => {
       if (
@@ -78,6 +87,7 @@ export default function SmoothScroll() {
     document.addEventListener("click", onClick);
 
     return () => {
+      release();
       document.removeEventListener("click", onClick);
       gsap.ticker.remove(raf);
       lenis.destroy();

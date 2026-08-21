@@ -32,6 +32,69 @@ export const NAV = [
   { label: "Contact", href: "#contact" },
 ];
 
+/**
+ * The prologue that runs before the hero copy: a VS Code window assembles out
+ * of the same dot field the hero sits on, and this file is typed into it as
+ * the reader scrolls. What gets typed is the headline component this page
+ * actually uses, so the sequence ends on the thing it just built.
+ *
+ * The code is content, not a fixture. It is kept here with the rest of the
+ * visible strings, while the tokenizer that colours it lives next to the
+ * renderer in components/story.
+ */
+export const STORY = {
+  project: "vp-portfolio",
+  file: "Headline.tsx",
+  branch: "main",
+  tabs: [
+    { name: "Hero.tsx", active: false },
+    { name: "Headline.tsx", active: true },
+    { name: "content.ts", active: false },
+  ],
+  crumbs: ["components", "Headline.tsx", "Headline"],
+  tree: [
+    { name: "app", depth: 0, folder: true, active: false },
+    { name: "layout.tsx", depth: 1, folder: false, active: false },
+    { name: "page.tsx", depth: 1, folder: false, active: false },
+    { name: "globals.css", depth: 1, folder: false, active: false },
+    { name: "components", depth: 0, folder: true, active: false },
+    { name: "Headline.tsx", depth: 1, folder: false, active: true },
+    { name: "Hero.tsx", depth: 1, folder: false, active: false },
+    { name: "Loader.tsx", depth: 1, folder: false, active: false },
+    { name: "lib", depth: 0, folder: true, active: false },
+    { name: "content.ts", depth: 1, folder: false, active: false },
+  ],
+  /** Drawn right to left from the far edge of the status bar. */
+  statusRight: ["Spaces: 2", "UTF-8", "LF", "TypeScript JSX"],
+  code: `import { motion } from "motion/react";
+import { useRef } from "react";
+
+type HeadlineProps = {
+  lines: string[];
+  play: boolean;
+};
+
+export function Headline({ lines, play }: HeadlineProps) {
+  const host = useRef<HTMLHeadingElement>(null);
+
+  return (
+    <h1 ref={host} className="font-display text-7xl tracking-tight">
+      {lines.map((line, i) => (
+        <motion.span
+          key={line}
+          className="block overflow-hidden"
+          initial={{ opacity: 0, y: 40 }}
+          animate={play ? { opacity: 1, y: 0 } : undefined}
+          transition={{ delay: i * 0.16, duration: 1.25 }}
+        >
+          {line}
+        </motion.span>
+      ))}
+    </h1>
+  );
+}`,
+} as const;
+
 export const HERO = {
   lines: ["Architecture", "that ships."],
   sub: "10 years in web development. I build interfaces that stay fast, accessible, and easy to change.",

@@ -3,6 +3,7 @@ import Cursor from "@/components/Cursor";
 import SmoothScroll from "@/components/SmoothScroll";
 import Nav from "@/components/Nav";
 import SideNav from "@/components/SideNav";
+import Story from "@/components/Story";
 import Hero from "@/components/Hero";
 import Expertise from "@/components/Expertise";
 // Parked while the hero and the ticker are being worked on. Uncomment as a
@@ -27,6 +28,7 @@ export default function Page() {
       <Nav />
       <SideNav />
       <main>
+        <Story />
         <Hero />
         <Expertise />
         {/* <Work /> */}

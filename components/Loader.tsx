@@ -40,6 +40,19 @@ type Phase = "load" | "flush" | "gone";
 const roster = (value: boolean) =>
   Object.fromEntries(STEPS.map((s) => [s.key, value])) as Record<StepKey, boolean>;
 
+/** Every key the browser would scroll the page with. */
+const SCROLL_KEYS = new Set([
+  " ",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+]);
+
 const CEILING_MS = 9000;
 const MIN_HOLD_MS = 2600;
 /** If the canvas never reports back, leave anyway. */
@@ -172,23 +185,61 @@ export default function Loader() {
   }, [phase, reduce, handOver]);
 
   /**
-   * Held at the top by pinning the position, not by setting overflow hidden.
+   * Held at the top by refusing the input, not by setting overflow hidden.
    * Toggling overflow takes the scrollbar away and puts it back, and because
    * this page styles ::-webkit-scrollbar Chrome gives it a classic one that
    * occupies real width, so the entire layout stepped sideways by the
    * scrollbar's width the moment the lock came off. Nothing here touches
    * overflow, so there is nothing to step.
+   *
+   * Wheel, touch and the scrolling keys are swallowed, so the page does not
+   * move in the first place. Lenis is stopped over the same window, which is
+   * what stops a wheel gesture being animated and then pulled back a frame
+   * later; see SmoothScroll. The frame loop is the backstop for the routes
+   * neither of those covers: dragging the scrollbar thumb, a focus jump, a
+   * hash in the URL.
    */
   useEffect(() => {
     if (phase === "gone") return;
+
+    // The page always opens at the top. Left on "auto" the browser restores
+    // the position it remembered for this entry, which lands the reader
+    // mid-page behind the loader and hands ScrollTrigger that position as the
+    // hero's starting point. Set once and left set: it only takes effect on
+    // the next load of this entry, so restoring it on cleanup would put the
+    // restore straight back.
+    history.scrollRestoration = "manual";
     window.scrollTo(0, 0);
+
+    const swallow = (event: Event) => {
+      if (event.cancelable) event.preventDefault();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!SCROLL_KEYS.has(event.key)) return;
+      // Never take a key away from something the reader is typing into.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("input, textarea, select, [contenteditable]")) return;
+      event.preventDefault();
+    };
+
+    window.addEventListener("wheel", swallow, { passive: false });
+    window.addEventListener("touchmove", swallow, { passive: false });
+    window.addEventListener("keydown", onKeyDown);
+
     let raf = 0;
     const pin = () => {
       raf = requestAnimationFrame(pin);
       if (window.scrollY !== 0) window.scrollTo(0, 0);
     };
     raf = requestAnimationFrame(pin);
-    return () => cancelAnimationFrame(raf);
+
+    return () => {
+      window.removeEventListener("wheel", swallow);
+      window.removeEventListener("touchmove", swallow);
+      window.removeEventListener("keydown", onKeyDown);
+      cancelAnimationFrame(raf);
+    };
   }, [phase]);
 
   if (phase === "gone") return null;

@@ -13,7 +13,7 @@ import dynamic from "next/dynamic";
 import Button from "./Button";
 import SplitLines from "./SplitLines";
 import { useReducedMotionSafe } from "./useReducedMotionSafe";
-import { isLoaderDone, onLoaderDone } from "@/lib/boot";
+import { onLoaderDone } from "@/lib/boot";
 import { heroExit } from "@/lib/stage";
 import { HERO, PERSON } from "@/lib/content";
 
@@ -55,12 +55,39 @@ export default function Hero() {
   const reduce = useReducedMotionSafe();
   const [ready, setReady] = useState(false);
 
+  /**
+   * The entrance waits for the reader, not for the clock. The prologue runs
+   * above this section now, so firing on the loader's handover would spend the
+   * whole sequence on an empty screen and leave the hero already arrived by
+   * the time anyone scrolled to it.
+   *
+   * The observer is only attached once the loader has gone. Attached earlier
+   * it would measure the layout that exists before the prologue has mounted,
+   * where this section is the top of the page, and latch immediately.
+   */
   useEffect(() => {
-    if (isLoaderDone()) {
-      setReady(true);
-      return;
-    }
-    return onLoaderDone(() => setReady(true));
+    const node = host.current;
+    if (!node) return;
+    let io: IntersectionObserver | undefined;
+
+    const release = onLoaderDone(() => {
+      io = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry.isIntersecting) return;
+          setReady(true);
+          io?.disconnect();
+        },
+        // Fires when the section reaches the middle band of the viewport,
+        // which for a pinned section this tall means it has taken the screen.
+        { rootMargin: "-30% 0px -30% 0px" },
+      );
+      io.observe(node);
+    });
+
+    return () => {
+      release();
+      io?.disconnect();
+    };
   }, []);
 
   const mx = useMotionValue(2.4);
