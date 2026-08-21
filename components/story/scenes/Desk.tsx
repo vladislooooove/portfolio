@@ -91,6 +91,85 @@ const smoother = (t: number) => {
 
 const span = (v: number, a: number, b: number) => Math.min(1, Math.max(0, (v - a) / (b - a)));
 
+/**
+ * The surface the laptop stands on, which is not a surface. It is the dot
+ * field the prologue opened on, laid flat: same points, same violet, no
+ * relief. A solid slab under an object that arrived out of a landscape of
+ * dots reads as a different world; this keeps the ground in the language the
+ * sequence is already speaking.
+ *
+ * Brightness is a pool centred under the machine, standing in for the light
+ * the screen would throw if there were anything down there to catch it, and
+ * everything runs out into the dark well before the grid does, so the field
+ * has no edge.
+ */
+const GROUND_VERT = /* glsl */ `
+  uniform float uTime;
+  uniform float uFade;
+  uniform float uSize;
+  uniform float uReach;
+  uniform vec3  uCool;
+  uniform vec3  uHot;
+
+  attribute float aSeed;
+
+  varying vec3  vColor;
+  varying float vAlpha;
+
+  void main() {
+    float r = length(position.xz);
+    float pool = exp(-r * r * 0.05);
+    float spark = step(0.988, fract(aSeed * 41.0));
+    float twinkle = spark * (0.5 + 0.5 * sin(uTime * 1.6 + aSeed * 53.0));
+
+    vColor = mix(uCool, uHot, clamp(pool * 0.9 + twinkle, 0.0, 1.0));
+    float edge = smoothstep(uReach, uReach * 0.62, r);
+    vAlpha = (0.24 + pool * 0.6 + twinkle * 0.8) * edge * uFade;
+
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    float depth = max(-mv.z, 0.0001);
+    gl_PointSize = min(uSize * (0.7 + twinkle) / depth, 40.0);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const GROUND_FRAG = /* glsl */ `
+  varying vec3  vColor;
+  varying float vAlpha;
+
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    float mask = smoothstep(0.5, 0.06, length(c));
+    if (mask < 0.01) discard;
+    gl_FragColor = vec4(vColor, mask * vAlpha);
+  }
+`;
+
+const GRID_VERT = /* glsl */ `
+  uniform float uFade;
+  uniform float uReach;
+
+  varying float vAlpha;
+
+  void main() {
+    float r = length(position.xz);
+    float pool = exp(-r * r * 0.05);
+    float edge = smoothstep(uReach, uReach * 0.62, r);
+    vAlpha = (0.1 + pool * 0.34) * edge * uFade;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const GRID_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  varying float vAlpha;
+
+  void main() {
+    if (vAlpha < 0.004) discard;
+    gl_FragColor = vec4(uColor, vAlpha);
+  }
+`;
+
 /** One key. Width and advance are in key units; height is a fraction of a row. */
 type Key = { w: number; h: number; dy: number; adv: number };
 const K = (w = 1, h = 1, dy = 0, adv = w): Key => ({ w, h, dy, adv });
@@ -142,6 +221,9 @@ export default function Desk({
   const screen = useRef<THREE.MeshBasicMaterial>(null);
   const glow = useRef<THREE.MeshBasicMaterial>(null);
   const keys = useRef<THREE.InstancedMesh>(null);
+  const field = useRef<THREE.ShaderMaterial>(null);
+  const grid = useRef<THREE.ShaderMaterial>(null);
+  const pool = useRef<THREE.MeshBasicMaterial>(null);
   const lights = useRef<THREE.Group>(null);
 
   /** Every measurement on the object comes off the screen it is built around. */
@@ -167,10 +249,44 @@ export default function Desk({
 
   const lid = useMemo(() => panel(M.lidW, M.lidH, M.lidW * 0.022, M.lidT), [M]);
   const base = useMemo(() => slab(M.lidW, M.baseD, M.lidW * 0.020, M.baseT), [M]);
-  const desk = useMemo(
-    () => slab(M.lidW * 2.2, M.baseD * 2.4, M.lidW * 0.05, M.baseT * 0.5),
-    [M],
-  );
+  const ground = useMemo(() => {
+    const reach = M.lidW * 2.2;
+    const step = M.lidW / 34;
+    const span = Math.ceil(reach / step);
+    const y = -M.baseT / 2;
+
+    const dots: number[] = [];
+    const seeds: number[] = [];
+    for (let i = -span; i <= span; i++) {
+      for (let j = -span; j <= span; j++) {
+        const x = i * step;
+        const z = j * step;
+        if (Math.hypot(x, z) > reach) continue;
+        dots.push(x, y, z);
+        seeds.push(Math.random());
+      }
+    }
+
+    // The lines are on a quarter of that pitch, and split per cell so the
+    // falloff can vary along their length instead of only at their ends.
+    const lines: number[] = [];
+    const every = 6;
+    for (let i = -span; i <= span; i += every) {
+      for (let j = -span; j < span; j++) {
+        lines.push(i * step, y, j * step, i * step, y, (j + 1) * step);
+        lines.push(j * step, y, i * step, (j + 1) * step, y, i * step);
+      }
+    }
+
+    const points = new THREE.BufferGeometry();
+    points.setAttribute("position", new THREE.BufferAttribute(new Float32Array(dots), 3));
+    points.setAttribute("aSeed", new THREE.BufferAttribute(new Float32Array(seeds), 1));
+
+    const mesh = new THREE.BufferGeometry();
+    mesh.setAttribute("position", new THREE.BufferAttribute(new Float32Array(lines), 3));
+
+    return { points, mesh, reach };
+  }, [M]);
 
   /**
    * The deck, in the fractions of its own depth a laptop actually uses: a
@@ -232,12 +348,33 @@ export default function Desk({
 
   useEffect(
     () => () => {
-      [lid, base, pad, padSeam, desk].forEach((g) => g.dispose());
+      [lid, base, pad, padSeam, ground.points, ground.mesh].forEach((g) => g.dispose());
     },
-    [lid, base, pad, padSeam, desk],
+    [lid, base, pad, padSeam, ground],
   );
 
-  useFrame(() => {
+  const fieldUniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uFade: { value: 0 },
+      uSize: { value: 14 },
+      uReach: { value: 1 },
+      uCool: { value: new THREE.Color("#5b3ec4") },
+      uHot: { value: new THREE.Color("#d8b4fe") },
+    }),
+    [],
+  );
+
+  const gridUniforms = useMemo(
+    () => ({
+      uFade: { value: 0 },
+      uReach: { value: 1 },
+      uColor: { value: new THREE.Color("#a855f7") },
+    }),
+    [],
+  );
+
+  useFrame((state) => {
     const gone = 1 - exit.get();
     const p = pull.get();
     const shown = reveal.get();
@@ -259,6 +396,21 @@ export default function Desk({
       // punches a hole in the landscape behind it.
       material.depthWrite = solid > 0.04;
     });
+
+    if (field.current) {
+      field.current.uniforms.uTime.value = state.clock.elapsedTime;
+      field.current.uniforms.uFade.value = solid;
+      field.current.uniforms.uReach.value = ground.reach;
+      // The ground sits three times further from the lens than the hero's
+      // field does, and the size divides by that depth. At the sizes scene 1
+      // uses these come out under a pixel and vanish.
+      field.current.uniforms.uSize.value = 72 * state.viewport.dpr;
+    }
+    if (grid.current) {
+      grid.current.uniforms.uFade.value = solid;
+      grid.current.uniforms.uReach.value = ground.reach;
+    }
+    if (pool.current) pool.current.opacity = solid * 0.55;
 
     if (screen.current) {
       screen.current.opacity = shown * gone;
@@ -385,9 +537,50 @@ export default function Desk({
           <meshStandardMaterial color="#3a3358" roughness={0.55} metalness={0.06} transparent opacity={0} />
         </mesh>
 
-        <mesh geometry={desk} position={[0, -M.baseT * 0.75, M.baseD * 0.18]}>
-          <meshStandardMaterial color="#1b1628" roughness={0.9} metalness={0.0} transparent opacity={0} />
+        {/* The ground, and the light it would be catching. The pool is a
+            texture rather than a lit surface, because there is no surface. */}
+        <mesh
+          position={[0, -M.baseT * 0.5 - 0.004, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={0}
+        >
+          <planeGeometry args={[M.lidW * 2.4, M.lidW * 2.4]} />
+          <meshBasicMaterial
+            ref={pool}
+            map={glowMap}
+            transparent
+            opacity={0}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            userData={{ own: true }}
+          />
         </mesh>
+
+        <lineSegments geometry={ground.mesh} frustumCulled={false}>
+          <shaderMaterial
+            ref={grid}
+            uniforms={gridUniforms}
+            vertexShader={GRID_VERT}
+            fragmentShader={GRID_FRAG}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            userData={{ own: true }}
+          />
+        </lineSegments>
+
+        <points geometry={ground.points} frustumCulled={false}>
+          <shaderMaterial
+            ref={field}
+            uniforms={fieldUniforms}
+            vertexShader={GROUND_VERT}
+            fragmentShader={GROUND_FRAG}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            userData={{ own: true }}
+          />
+        </points>
 
         {/* The cup, on the right, the size a cup is next to a laptop. */}
         {/* Clear of the base's own footprint, and not so far forward that
@@ -396,7 +589,7 @@ export default function Desk({
             sitting below the rim, and a handle whose ends run into the body
             rather than floating beside it. A closed cylinder with a disc on
             top is a canister. */}
-        <group position={[M.lidW * 0.58, -M.baseT * 0.5, M.baseD * 0.10]}>
+        <group position={[M.lidW * 0.58, -M.baseT * 0.5, M.baseD * 0.10]} rotation={[0, -0.8, 0]}>
           <mesh position={[0, M.W * 0.048, 0]}>
             <cylinderGeometry args={[M.W * 0.042, M.W * 0.036, M.W * 0.096, 28, 1, true]} />
             <meshStandardMaterial

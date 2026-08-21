@@ -20,10 +20,12 @@ const BEATS = {
   type: [170, 320],
   /** The camera pulls back off the screen onto the laptop it is part of. */
   pull: [340, 480],
+  /** It orbits around the laptop and rises, onto the three quarter view. */
+  turn: [480, 600],
 } as const;
 
 /** In viewport heights. The section is this tall. */
-export const STORY_HEIGHT = 480;
+export const STORY_HEIGHT = 600;
 
 export type Beat = keyof typeof BEATS;
 
@@ -42,4 +44,5 @@ export const CHAPTERS = [
   { at: BEATS.reveal[0] / STORY_HEIGHT, label: "Editor" },
   { at: BEATS.type[0] / STORY_HEIGHT, label: "Code" },
   { at: BEATS.pull[0] / STORY_HEIGHT, label: "Laptop" },
+  { at: BEATS.turn[0] / STORY_HEIGHT, label: "Desk" },
 ] as const;

@@ -12,22 +12,61 @@ const smoother = (t: number) => {
 };
 
 /**
- * The camera, which is the whole of scene 2: it goes back far enough to see
- * what the screen was part of, and rises as it goes so the deck is not edge
- * on when it arrives. Nothing in the scene moves to meet it.
+ * How far round and how far up the turn goes, once the pull is done.
+ *
+ * Round to the laptop's front left, not its front right. From there the lid
+ * falls to the upper left of the frame and the rows of keys run up to the
+ * right, which is the isometric the reference is drawn on. Coming round the
+ * other way mirrors it, and the deck reads back to front.
+ */
+const AZIMUTH = THREE.MathUtils.degToRad(42);
+const RISE = THREE.MathUtils.degToRad(22);
+
+/**
+ * The camera, which is the whole of scenes 2 and 3. It goes back far enough to
+ * see what the screen was part of, then swings round the laptop and rises onto
+ * the three quarter view. Nothing in the scene moves to meet it: the laptop is
+ * planted on the desk and the room comes around it.
+ *
+ * The turn is applied to the pull's own result rather than being a second path
+ * of its own. Converting that offset to spherical, adding the angles and
+ * converting back is an identity transform at turn = 0, so the last frame of
+ * one scene and the first frame of the next are the same picture by
+ * construction rather than by two sets of numbers agreeing.
  *
  * Driven straight onto the camera inside the frame loop rather than through
  * r3f's state, which would recompute the viewport and rebuild every buffer
  * measured against it partway down the page.
  */
-function Rig({ pull }: { pull: MotionValue<number> }) {
+function Rig({ pull, turn }: { pull: MotionValue<number>; turn: MotionValue<number> }) {
   const camera = useThree((state) => state.camera);
   const aim = useRef(new THREE.Vector3());
+  const offset = useRef(new THREE.Vector3());
+  const orbit = useRef(new THREE.Spherical());
 
   useFrame(() => {
     const p = smoother(pull.get());
-    camera.position.set(0, 1.5 * p, 6 + 5.2 * p);
+    const t = smoother(turn.get());
+
     aim.current.set(0, -0.68 * p, 0);
+    offset.current.set(0, 1.5 * p, 6 + 5.2 * p).sub(aim.current);
+
+    if (t > 0) {
+      orbit.current.setFromVector3(offset.current);
+      orbit.current.theta -= AZIMUTH * t;
+      orbit.current.phi -= RISE * t;
+      // Backs off on the way round. Turned on the spot the object grows into
+      // the frame as it opens out, and the base runs off two edges at once.
+      orbit.current.radius *= 1 + 0.2 * t;
+      offset.current.setFromSpherical(orbit.current);
+
+      // And the aim walks from the screen to the middle of the whole object,
+      // which is well forward of it once the deck is in view.
+      aim.current.y -= 0.34 * t;
+      aim.current.z += 1.3 * t;
+    }
+
+    camera.position.copy(aim.current).add(offset.current);
     camera.lookAt(aim.current);
   });
 
@@ -49,6 +88,7 @@ export default function StoryStage({
   assemble,
   fall,
   pull,
+  turn,
   reveal,
   type,
   exit,
@@ -58,6 +98,7 @@ export default function StoryStage({
   assemble: MotionValue<number>;
   fall: MotionValue<number>;
   pull: MotionValue<number>;
+  turn: MotionValue<number>;
   reveal: MotionValue<number>;
   type: MotionValue<number>;
   exit: MotionValue<number>;
@@ -94,7 +135,7 @@ export default function StoryStage({
         gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
         camera={{ position: [0, 0, 6], fov: 45 }}
       >
-        <Rig pull={pull} />
+        <Rig pull={pull} turn={turn} />
         <Assembly
           assemble={assemble}
           fall={fall}
