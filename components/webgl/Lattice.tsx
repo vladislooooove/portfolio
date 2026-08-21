@@ -3,13 +3,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { motion } from "motion/react";
 import type { MotionValue } from "motion/react";
 import { useReducedMotionSafe } from "../useReducedMotionSafe";
 import { markSceneReady } from "@/lib/boot";
 
-/* Storytelling: the field starts as a regular lattice and comes apart as you
-   scroll, which is the same move the work section is about. Hierarchy: it
-   brightens and parts around the pointer, so the hero answers to the reader. */
+/* Storytelling: the field starts as a regular lattice, comes apart as you
+   scroll, then lies back into perspective and leaves the plane entirely,
+   streaming past the reader on the way to the next section. Hierarchy: it
+   brightens and parts around the pointer, so the hero answers to the reader.
+
+   The three scroll stages are separate uniforms rather than one, because they
+   overlap: the field is still coming apart while it is already tilting. */
 
 const VERT = /* glsl */ `
   uniform float uTime;
@@ -17,8 +22,11 @@ const VERT = /* glsl */ `
   uniform float uScatter;
   uniform float uSize;
   uniform float uRadius;
+  uniform float uTilt;
+  uniform float uFly;
   attribute float aSeed;
   varying float vHeat;
+  varying float vFade;
 
   void main() {
     vec3 pos = position;
@@ -42,8 +50,33 @@ const VERT = /* glsl */ `
     float wave = pow(w1 * 0.65 + w2 * 0.35, 2.0);
     vHeat = clamp(push * 1.2 + uScatter * 0.4 + wave * 0.95 + abs(n1) * 0.08, 0.0, 1.0);
 
+    // The field lies back on its own X axis. Rotating the object instead
+    // would tilt the fly direction with it, and the points would drift off
+    // along the plane's normal rather than come at the reader.
+    float ca = cos(uTilt);
+    float sa = sin(uTilt);
+    float py = pos.y;
+    float pz = pos.z;
+    pos.y = py * ca - pz * sa;
+    pos.z = py * sa + pz * ca;
+
+    // Then they leave the plane toward the lens, each at its own rate, so
+    // they arrive as a stream instead of as one wall.
+    float rate = 0.45 + aSeed * 1.9;
+    pos.z += uFly * rate * 7.4;
+
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
-    gl_PointSize = uSize * (0.55 + vHeat * 0.9 + push * 2.0) * (1.0 / -mv.z);
+    float depth = max(-mv.z, 0.0001);
+
+    // Fades out as it reaches the lens. Without this they wink out on the
+    // near plane, which reads as a bug rather than as speed.
+    // The second term takes the whole field with it at the end of the run:
+    // every point goes, rather than one of them staying to become the ground.
+    vFade = smoothstep(0.12, 1.45, depth) * (1.0 - smoothstep(0.58, 0.97, uFly));
+
+    // Capped because gl_PointSize above the driver's limit is silently
+    // clamped, and the cap is not the same number on every device.
+    gl_PointSize = min(uSize * (0.55 + vHeat * 0.9 + push * 2.0) / depth, 210.0);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -52,6 +85,7 @@ const FRAG = /* glsl */ `
   uniform vec3 uCool;
   uniform vec3 uHot;
   varying float vHeat;
+  varying float vFade;
 
   void main() {
     vec2 c = gl_PointCoord - 0.5;
@@ -59,7 +93,7 @@ const FRAG = /* glsl */ `
     float mask = smoothstep(0.5, 0.08, d);
     if (mask < 0.01) discard;
     vec3 col = mix(uCool, uHot, vHeat);
-    gl_FragColor = vec4(col, mask * (0.20 + vHeat * 0.80));
+    gl_FragColor = vec4(col, mask * (0.20 + vHeat * 0.80) * vFade);
   }
 `;
 
@@ -67,10 +101,14 @@ function Field({
   mx,
   my,
   progress,
+  tilt,
+  fly,
 }: {
   mx: MotionValue<number>;
   my: MotionValue<number>;
   progress: MotionValue<number>;
+  tilt: MotionValue<number>;
+  fly: MotionValue<number>;
 }) {
   const { viewport } = useThree();
   const material = useRef<THREE.ShaderMaterial>(null);
@@ -114,6 +152,8 @@ function Field({
       uScatter: { value: 0 },
       uSize: { value: 10 },
       uRadius: { value: 1.15 },
+      uTilt: { value: 0 },
+      uFly: { value: 0 },
       uCool: { value: new THREE.Color("#6d4de0") },
       uHot: { value: new THREE.Color("#cbb8ff") },
     }),
@@ -140,6 +180,8 @@ function Field({
     m.uniforms.uMouse.value.copy(eased.current);
     m.uniforms.uTime.value = state.clock.elapsedTime;
     m.uniforms.uScatter.value = progress.get();
+    m.uniforms.uTilt.value = tilt.get() * 1.02;
+    m.uniforms.uFly.value = fly.get();
     m.uniforms.uSize.value = (compact ? 16 : 24) * state.viewport.dpr;
     m.uniforms.uRadius.value = compact ? 0.8 : 1.25;
   });
@@ -163,10 +205,17 @@ export default function Lattice({
   mx,
   my,
   progress,
+  tilt,
+  fly,
+  scrim,
 }: {
   mx: MotionValue<number>;
   my: MotionValue<number>;
   progress: MotionValue<number>;
+  tilt: MotionValue<number>;
+  fly: MotionValue<number>;
+  /** Fades the foot scrim, which otherwise dims the points streaming past. */
+  scrim: MotionValue<number>;
 }) {
   const reduce = useReducedMotionSafe();
   const [ready, setReady] = useState(false);
@@ -205,12 +254,16 @@ export default function Lattice({
           gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
           camera={{ position: [0, 0, 6], fov: 45 }}
         >
-          <Field mx={mx} my={my} progress={progress} />
+          <Field mx={mx} my={my} progress={progress} tilt={tilt} fly={fly} />
         </Canvas>
       )}
       {/* Clears the ground under the small copy at the foot of the hero so
-          16px text is not competing with the field. */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_top,rgb(10_7_16)_0%,rgb(10_7_16/0.86)_14%,rgb(10_7_16/0.38)_42%,transparent_72%)]" />
+          16px text is not competing with the field. Lifts once that copy has
+          gone, or it would dim the points on their way past. */}
+      <motion.div
+        style={{ opacity: scrim }}
+        className="absolute inset-0 bg-[linear-gradient(to_top,rgb(10_7_16)_0%,rgb(10_7_16/0.88)_16%,rgb(10_7_16/0.62)_34%,rgb(10_7_16/0.34)_52%,rgb(10_7_16/0.14)_70%,rgb(10_7_16/0.04)_84%,transparent_96%)]"
+      />
     </div>
   );
 }

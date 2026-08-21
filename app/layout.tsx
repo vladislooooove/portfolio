@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Syne, Geist, Geist_Mono } from "next/font/google";
 import { PERSON } from "@/lib/content";
+import "lenis/dist/lenis.css";
 import "./globals.css";
 
 const syne = Syne({ subsets: ["latin"], variable: "--font-syne", display: "swap" });
@@ -10,7 +11,7 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono"
 export const metadata: Metadata = {
   title: `${PERSON.name} - ${PERSON.role}`,
   description:
-    "9 years in React and TypeScript. I split monoliths into micro-frontends and publish the design systems teams build on.",
+    "10 years in web development. I build interfaces that stay fast, accessible, and easy to change.",
 };
 
 export const viewport: Viewport = {

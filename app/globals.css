@@ -40,6 +40,44 @@
     color: var(--color-void);
   }
 
+  /* Scrollbar in the page's own palette. Firefox and modern Safari take the
+     standard properties; the WebKit block below is what Chrome reads. Square
+     corners, same as every other control here. */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-control) var(--color-void);
+    /* Reserved whether or not the bar is showing, so a page that is not tall
+       enough to scroll does not sit 11px wider than one that is. */
+    scrollbar-gutter: stable;
+  }
+
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-void);
+    border-left: 1px solid var(--color-line);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-control);
+    /* Reads as a slim bar with breathing room rather than a fat slab. */
+    border: 3px solid var(--color-void);
+    border-top: 0;
+    border-bottom: 0;
+  }
+
+  ::-webkit-scrollbar-thumb:hover,
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--color-accent);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: var(--color-void);
+  }
+
   /* Only ever set by the cursor component, and only on fine pointers, so
      nothing is hidden when JavaScript does not run. */
   html.has-custom-cursor,
@@ -263,6 +301,116 @@
     filter: blur(90px);
     background: rgb(139 92 246 / 0.3);
     pointer-events: none;
+  }
+
+  /* ------------------------------------------------------------------
+     Progressive blur curtain, used by the fixed header.
+
+     Six stacked backdrop filters, each one blurrier than the last and each
+     masked to start lower down, inside a box that is taller than the bar it
+     sits behind. The blur therefore ramps toward the top edge and reaches
+     nothing at the bottom, instead of ending on the hard line a single
+     backdrop-blur leaves behind.
+
+     This is a hand-built approximation of the progressive-blur headers going
+     around; there is no official package for it.
+  ------------------------------------------------------------------- */
+  .curtain {
+    --curtain-h: 7.5rem;
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--curtain-h);
+    isolation: isolate;
+    pointer-events: none;
+  }
+
+  .curtain > span {
+    position: absolute;
+    inset: 0 0 auto;
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* Own layer, so six live backdrop filters do not force the compositor to
+       re-read the page behind them on every scroll frame. */
+    transform: translateZ(0);
+    will-change: backdrop-filter;
+  }
+
+  .curtain > span:nth-child(1) {
+    -webkit-backdrop-filter: blur(1px);
+    backdrop-filter: blur(1px);
+    -webkit-mask-image: linear-gradient(0deg, transparent 0, #000 34%);
+    mask-image: linear-gradient(0deg, transparent 0, #000 34%);
+  }
+
+  .curtain > span:nth-child(2) {
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    -webkit-mask-image: linear-gradient(0deg, transparent 10%, #000 44%);
+    mask-image: linear-gradient(0deg, transparent 10%, #000 44%);
+  }
+
+  .curtain > span:nth-child(3) {
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    -webkit-mask-image: linear-gradient(0deg, transparent 20%, #000 54%);
+    mask-image: linear-gradient(0deg, transparent 20%, #000 54%);
+  }
+
+  .curtain > span:nth-child(4) {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    -webkit-mask-image: linear-gradient(0deg, transparent 32%, #000 66%);
+    mask-image: linear-gradient(0deg, transparent 32%, #000 66%);
+  }
+
+  .curtain > span:nth-child(5) {
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    -webkit-mask-image: linear-gradient(0deg, transparent 44%, #000 78%);
+    mask-image: linear-gradient(0deg, transparent 44%, #000 78%);
+  }
+
+  .curtain > span:nth-child(6) {
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    -webkit-mask-image: linear-gradient(0deg, transparent 58%, #000 92%);
+    mask-image: linear-gradient(0deg, transparent 58%, #000 92%);
+  }
+
+  /* Carries the darkening on the same falloff as the blur, so display type
+     under the bar keeps its contrast. Opacity is driven from the header. */
+  .curtain-tint {
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--curtain-h);
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      rgb(10 7 16 / 0.82) 0%,
+      rgb(10 7 16 / 0.58) 38%,
+      rgb(10 7 16 / 0.16) 72%,
+      rgb(10 7 16 / 0) 100%
+    );
+  }
+
+  /* Blur is decoration; the tint is what keeps the bar legible. Where the
+     reader has asked for less transparency, the tint goes solid and the
+     filters come off entirely. */
+  @media (prefers-reduced-transparency: reduce) {
+    .curtain > span {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+
+    .curtain-tint {
+      background: linear-gradient(
+        180deg,
+        var(--color-void) 0%,
+        var(--color-void) 62%,
+        rgb(10 7 16 / 0) 100%
+      );
+    }
   }
 }
 

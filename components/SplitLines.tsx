@@ -13,14 +13,17 @@ import { useReducedMotionSafe } from "./useReducedMotionSafe";
  */
 const WRAPPER: Variants = {
   hidden: {},
-  shown: (delay: number) => ({
-    transition: { staggerChildren: 0.09, delayChildren: delay },
+  shown: ({ delay, stagger }: { delay: number; stagger: number }) => ({
+    transition: { staggerChildren: stagger, delayChildren: delay },
   }),
 };
 
 const LINE: Variants = {
   hidden: { y: "112%" },
-  shown: { y: 0, transition: { duration: 0.85, ease: [0.16, 1, 0.3, 1] } },
+  shown: (duration: number) => ({
+    y: 0,
+    transition: { duration, ease: [0.16, 1, 0.3, 1] },
+  }),
 };
 
 const LINE_STILL: Variants = {
@@ -34,6 +37,8 @@ export default function SplitLines({
   delay = 0,
   inView = false,
   play = true,
+  duration = 0.85,
+  stagger = 0.09,
 }: {
   lines: string[];
   className?: string;
@@ -41,13 +46,15 @@ export default function SplitLines({
   inView?: boolean;
   /** Holds the lines masked until the loader has handed over. */
   play?: boolean;
+  duration?: number;
+  stagger?: number;
 }) {
   const reduce = useReducedMotionSafe();
 
   return (
     <motion.span
       className={`block ${className ?? ""}`}
-      custom={reduce ? 0 : delay}
+      custom={{ delay: reduce ? 0 : delay, stagger: reduce ? 0 : stagger }}
       variants={WRAPPER}
       initial="hidden"
       {...(inView
@@ -56,7 +63,11 @@ export default function SplitLines({
     >
       {lines.map((line) => (
         <span key={line} className="block overflow-hidden pb-[0.12em]">
-          <motion.span className="block" variants={reduce ? LINE_STILL : LINE}>
+          <motion.span
+            className="block"
+            custom={duration}
+            variants={reduce ? LINE_STILL : LINE}
+          >
             {line}
           </motion.span>
         </span>

@@ -12,6 +12,15 @@ const ProjectField = dynamic(() => import("./webgl/ProjectField"), { ssr: false 
 const TURB = [0.35, 0.95, 1.6];
 const SEED = [0, 2.4, 5.1];
 
+/**
+ * Reduced motion gets explicit values, not a dropped style prop. Dropping it
+ * leaves whatever motion last wrote sitting inline, and since the media query
+ * is only read after the first render, what it last wrote here was the fade's
+ * resting value. Every panel stayed at 15 percent and the case studies could
+ * not be read at all.
+ */
+const STATIC = { opacity: 1, y: 0 };
+
 function Panel({
   project,
   index,
@@ -48,7 +57,7 @@ function Panel({
       className="flex min-h-[100dvh] items-center px-6 py-28 md:px-10"
     >
       <motion.div
-        style={reduce ? undefined : { y, opacity: fade }}
+        style={reduce ? STATIC : { y, opacity: fade }}
         className="mx-auto w-full max-w-[1400px]"
       >
         <dl className="grid max-w-2xl grid-cols-2 gap-x-8 gap-y-4 font-mono text-xs md:grid-cols-4 md:text-sm">
@@ -96,7 +105,14 @@ export default function Work() {
 
 
   return (
-    <section id="work" ref={host} className="relative">
+    // Pulled back over the second viewport of the ticker, so the tear that
+    // section runs is uncovering this one. Opaque, or the ticker shows
+    // through the gaps in the project field.
+    <section
+      id="work"
+      ref={host}
+      className="relative z-30 -mt-[100dvh] bg-void motion-reduce:mt-0"
+    >
       <div className="pointer-events-none absolute inset-0">
         <div className="sticky top-0 h-[100dvh] w-full overflow-hidden">
           <ProjectField turb={TURB[active]} seed={SEED[active]} />
@@ -106,6 +122,15 @@ export default function Work() {
           <div className="absolute inset-0 bg-gradient-to-t from-void via-transparent to-void/60" />
         </div>
       </div>
+
+      {/* Soft top edge, so the project field ramps in instead of starting on a
+          ruled line where this section's box begins. The tear arriving from
+          the ticker paints flat ground, and a hard switch from that to a live
+          field is visible as a seam. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[340px] bg-[linear-gradient(to_bottom,var(--color-void)_0%,rgb(10_7_16/0.72)_38%,rgb(10_7_16/0.28)_70%,transparent_100%)]"
+      />
 
       <div className="relative z-10">
         <div className="mx-auto max-w-[1400px] px-6 pt-28 md:px-10 md:pt-36">

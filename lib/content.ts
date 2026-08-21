@@ -18,15 +18,23 @@ export const LINKS = {
   upwork: "https://www.upwork.com/freelancers/~01ad58c7a0fa3f1633",
 };
 
+/**
+ * The rail down the left edge, and the mobile menu, both read this. Entries
+ * whose section is not on the page are dropped at render rather than removed
+ * here, so parking a section does not mean editing this list too.
+ */
 export const NAV = [
+  { label: "Intro", href: "#top" },
+  { label: "Teams", href: "#teams" },
   { label: "Work", href: "#work" },
   { label: "Experience", href: "#experience" },
   { label: "Stack", href: "#stack" },
+  { label: "Contact", href: "#contact" },
 ];
 
 export const HERO = {
-  lines: ["Front-end", "architecture"],
-  sub: "9 years in React and TypeScript. I split monoliths into micro-frontends and publish the design systems teams build on.",
+  lines: ["Architecture", "that ships."],
+  sub: "10 years in web development. I build interfaces that stay fast, accessible, and easy to change.",
   primary: { label: "See the work", href: "#work" },
   secondary: { label: "Get in touch", href: "#contact" },
 };
@@ -91,7 +99,7 @@ export const DEEP_DIVE = {
 };
 
 export const IMPACT = [
-  { value: "9", label: "years of production front-end work" },
+  { value: "10", label: "years of production front-end work" },
   { value: "5", label: "micro-frontends carved out of one monolith" },
   { value: "3", label: "Scrum teams freed from a shared release train" },
   { value: "30+", label: "page product migrated from JavaScript to TypeScript" },

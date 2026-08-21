@@ -59,7 +59,7 @@ export default function Timeline() {
       <div className="relative z-10 flex h-[100dvh] flex-col">
         <div className="mx-auto w-full max-w-[1400px] shrink-0 px-6 pt-28 md:px-10 md:pt-32">
           <h2 className="font-display text-[clamp(2rem,4.5vw,3.75rem)] leading-none font-bold tracking-tight">
-            Where the 9 years went
+            Where the 10 years went
           </h2>
           <div className="mt-7 h-px w-full bg-line">
             <div
