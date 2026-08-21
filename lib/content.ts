@@ -25,7 +25,7 @@ export const LINKS = {
  */
 export const NAV = [
   { label: "Intro", href: "#top" },
-  { label: "Teams", href: "#teams" },
+  { label: "Expertise", href: "#expertise" },
   { label: "Work", href: "#work" },
   { label: "Experience", href: "#experience" },
   { label: "Stack", href: "#stack" },
@@ -38,6 +38,57 @@ export const HERO = {
   primary: { label: "See the work", href: "#work" },
   secondary: { label: "Get in touch", href: "#contact" },
 };
+
+/**
+ * Areas of expertise. Every claim carries something checkable underneath it,
+ * because a claim without one is just a skills list with bigger type. Sourced
+ * from cv.md; the proof lines are the numbers that file actually states.
+ *
+ * Ordered for scanning, not for chronology: the two strongest first, then the
+ * pair this page is itself the demo of, then the rest.
+ */
+export const EXPERTISE = [
+  {
+    title: "Front-end architecture",
+    body: "I break monoliths into domain micro-frontends and build the shell that coordinates them.",
+    proof: "5 micro-frontends. 3 teams off one release train.",
+  },
+  {
+    title: "Design systems",
+    body: "Shipped as a versioned npm package. Storybook for docs, semver for releases, migration guides when something breaks.",
+    proof: "20+ components. 2 teams consuming.",
+  },
+  {
+    title: "Complex design, built exactly",
+    body: "Give me the comp the team flinched at. Layered composition, custom grids, type that has to land on the pixel.",
+    proof: "It ships looking like the file.",
+  },
+  {
+    title: "Motion and WebGL",
+    body: "GSAP for the choreography, WebGL when the DOM cannot do it. The work is keeping it cheap enough for a phone.",
+    proof: "GSAP. Three.js. Canvas. Lottie.",
+  },
+  {
+    title: "Multi-tenant platforms",
+    body: "Tenant admins set their own statuses and which transitions are legal, so changing a workflow does not need an engineer.",
+    proof: "One component set. No per-tenant code.",
+  },
+  {
+    title: "Accessibility and RTL",
+    body: "React Aria primitives, so keyboard and screen reader behaviour is there before anyone asks. Right to left, bidirectional text included.",
+    proof: "WCAG. ARIA. Mirrored layout.",
+  },
+  {
+    title: "Performance",
+    body: "Profile first, then fix. Virtualized lists, tables and dropdowns once the data stops being polite.",
+    proof: "DevTools. React Profiler.",
+  },
+  {
+    title: "Real time",
+    body: "WebSockets and server-sent events. Several people editing the same thing, with conflict resolution when they collide.",
+    proof: "Web app and Chrome extension.",
+  },
+];
 
 export const COMPANIES = [
   "C the Signs",

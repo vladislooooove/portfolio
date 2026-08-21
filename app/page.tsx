@@ -4,7 +4,7 @@ import SmoothScroll from "@/components/SmoothScroll";
 import Nav from "@/components/Nav";
 import SideNav from "@/components/SideNav";
 import Hero from "@/components/Hero";
-import Ticker from "@/components/Ticker";
+import Expertise from "@/components/Expertise";
 // Parked while the hero and the ticker are being worked on. Uncomment as a
 // block; nothing below depends on anything above it.
 // import Work from "@/components/Work";
@@ -28,7 +28,7 @@ export default function Page() {
       <SideNav />
       <main>
         <Hero />
-        <Ticker />
+        <Expertise />
         {/* <Work /> */}
         {/* <DeepDive /> */}
         {/* <Impact /> */}
