@@ -33,16 +33,26 @@ const BRACKETS = ["#ffd700", "#da70d6", "#179fff"];
 
 export type Token = { text: string; color: string };
 
-const CONTROL = /^(?:import|from|export|return|if|else|await|async|for|of|in|as|default|new)\b/y;
+/**
+ * Sticky, and deliberately not anchored with ^.
+ *
+ * The two together do not mean what they look like they mean: a sticky regex
+ * already matches at lastIndex, while ^ still asserts the start of the input.
+ * Combining them means nothing past the first token on a line can ever match,
+ * every later token falls through to the single character branch, and the file
+ * renders with a coloured keyword at the head of each line and plain text for
+ * the whole body of the function.
+ */
+const CONTROL = /(?:import|from|export|return|if|else|await|async|for|of|in|as|default|new)\b/y;
 const DECLARE =
-  /^(?:const|let|var|function|type|interface|extends|null|undefined|true|false|void|string|number|boolean|readonly)\b/y;
+  /(?:const|let|var|function|type|interface|extends|null|undefined|true|false|void|string|number|boolean|readonly)\b/y;
 
-const COMMENT = /^\/\/.*/y;
-const STRING = /^(?:"[^"]*"|'[^']*'|`[^`]*`)/y;
-const NUMBER = /^\d+(?:\.\d+)?/y;
-const TAG = /^<\/?[A-Za-z][\w.]*/y;
-const IDENT = /^[A-Za-z_$][\w$]*/y;
-const SPACE = /^\s+/y;
+const COMMENT = /\/\/.*/y;
+const STRING = /(?:"[^"]*"|'[^']*'|`[^`]*`)/y;
+const NUMBER = /\d+(?:\.\d+)?/y;
+const TAG = /<\/?[A-Za-z][\w.]*/y;
+const IDENT = /[A-Za-z_$][\w$]*/y;
+const SPACE = /\s+/y;
 
 const at = (re: RegExp, line: string, i: number) => {
   re.lastIndex = i;

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, useMotionValueEvent, useTransform } from "motion/react";
 import type { MotionValue } from "motion/react";
+import { CHAPTERS } from "@/lib/story";
 
 /**
  * Where the reader is in the prologue.
@@ -18,14 +19,11 @@ import type { MotionValue } from "motion/react";
  * spaced: the landscape takes most of the run and the screen resolves quickly.
  *
  * The marker travels on a motion value and never touches React. Only the
- * label re-renders, twice in the whole sequence.
+ * label re-renders, once per chapter.
+ *
+ * The chapters themselves come from the timeline the scroll ranges are built
+ * from, so a beat cannot move without its tick moving with it.
  */
-const CHAPTERS = [
-  { at: 0, label: "Terrain" },
-  { at: 0.4, label: "Editor" },
-  { at: 0.52, label: "Code" },
-] as const;
-
 const RAIL = "38vh";
 
 export default function SceneRail({ progress }: { progress: MotionValue<number> }) {

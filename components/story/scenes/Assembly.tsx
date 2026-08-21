@@ -7,6 +7,7 @@ import type { MotionValue } from "motion/react";
 import { createEditorSurface } from "../editor-surface";
 import { TERRAIN } from "../terrain";
 import ScrollCue from "./ScrollCue";
+import Desk from "./Desk";
 import { markSceneReady } from "@/lib/boot";
 
 /* Scene 1 of the prologue. A dot landscape stands up into a VS Code window,
@@ -133,30 +134,14 @@ const LINE_FRAG = /* glsl */ `
   }
 `;
 
-/** Cheap radial falloff for the light the screen throws behind itself. */
-function makeGlow() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext("2d")!;
-  const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0, "rgba(139,92,246,0.55)");
-  g.addColorStop(0.45, "rgba(109,77,224,0.20)");
-  g.addColorStop(1, "rgba(109,77,224,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 256, 256);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
 const clamp1 = (v: number) => Math.max(-1, Math.min(1, v));
 
-export default function EditorAssembly({
+export default function Assembly({
   assemble,
   fall,
   reveal,
   type,
+  pull,
   exit,
   mx,
   my,
@@ -167,9 +152,11 @@ export default function EditorAssembly({
   fall: MotionValue<number>;
   /** 0 to 1: the dots handing over to the real screen. */
   reveal: MotionValue<number>;
+  /** 0 to 1 across scene 2: the camera pulling back onto the laptop. */
+  pull: MotionValue<number>;
   /** 0 to 1: how much of the file has been typed. */
   type: MotionValue<number>;
-  /** Temporary. Scene 2 takes this range and zooms out to the laptop. */
+  /** Temporary. Scene 3 takes this range and turns the laptop. */
   exit: MotionValue<number>;
   mx: MotionValue<number>;
   my: MotionValue<number>;
@@ -179,11 +166,12 @@ export default function EditorAssembly({
 
   const dots = useRef<THREE.ShaderMaterial>(null);
   const mesh = useRef<THREE.ShaderMaterial>(null);
-  const screen = useRef<THREE.MeshBasicMaterial>(null);
-  const glow = useRef<THREE.MeshBasicMaterial>(null);
+  const cloud = useRef<THREE.Points>(null);
+  const net = useRef<THREE.LineSegments>(null);
   const tilt = useRef(new THREE.Vector2(0, 0));
   const painted = useRef(-1);
   const blink = useRef(true);
+  const settled = useRef(false);
   const announced = useRef(false);
 
   const compact = viewport.width < 6;
@@ -219,9 +207,6 @@ export default function EditorAssembly({
   }, [surface, gl]);
 
   useEffect(() => () => texture?.dispose(), [texture]);
-
-  const glowMap = useMemo(() => makeGlow(), []);
-  useEffect(() => () => glowMap.dispose(), [glowMap]);
 
   /**
    * Big enough to be read, short of the edges so the room is still visible and
@@ -376,14 +361,38 @@ export default function EditorAssembly({
       w.uniforms.uFade.value = (1 - THREE.MathUtils.smoothstep(form, 0.02, 0.44)) * gone;
     }
 
-    if (screen.current) screen.current.opacity = shown * gone;
-    if (glow.current) glow.current.opacity = shown * gone * 0.9;
+    // Once the dots have handed over there is nothing left for either of them
+    // to draw, and a hundred thousand invisible points still cost a vertex
+    // pass. Scene 2 is the expensive one; they get out of its way.
+    const alive = m.uniforms.uFade.value > 0.004;
+    if (cloud.current) cloud.current.visible = alive;
+    if (net.current) net.current.visible = alive && w !== null && w.uniforms.uFade.value > 0.004;
 
     // The caret keeps its own clock, so the file looks like it is being
     // written rather than scrubbed. Both it and the character count only
     // trigger a repaint when they actually change.
-    const on = Math.floor(time / 0.53) % 2 === 0;
     const chars = Math.round(type.get() * surface.total);
+    const done = chars >= surface.total;
+
+    /**
+     * Once the file is finished the texture stops changing, and that is the
+     * moment it can afford mip levels. It could not before: the chain would
+     * have been rebuilt on every typed character. It has to have them by scene
+     * 3, when the screen turns away from the lens and a texture without them
+     * crawls with aliasing.
+     */
+    if (done !== settled.current) {
+      settled.current = done;
+      surface.draw(surface.total, done);
+      texture.generateMipmaps = done;
+      texture.minFilter = done ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+      texture.needsUpdate = true;
+      painted.current = done ? surface.total : -1;
+    }
+
+    if (done) return;
+
+    const on = Math.floor(time / 0.53) % 2 === 0;
     if (chars !== painted.current || on !== blink.current) {
       painted.current = chars;
       blink.current = on;
@@ -396,24 +405,9 @@ export default function EditorAssembly({
 
   return (
     <group>
-      <mesh position={[0, 0, -0.35]} renderOrder={0}>
-        <planeGeometry args={[plane.w * 1.7, plane.h * 1.9]} />
-        <meshBasicMaterial
-          ref={glow}
-          map={glowMap}
-          transparent
-          opacity={0}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
+      <Desk texture={texture} plane={plane} reveal={reveal} pull={pull} exit={exit} />
 
-      <mesh renderOrder={1}>
-        <planeGeometry args={[plane.w, plane.h]} />
-        <meshBasicMaterial ref={screen} map={texture} transparent opacity={0} depthWrite={false} />
-      </mesh>
-
-      <lineSegments geometry={wire} frustumCulled={false} renderOrder={2}>
+      <lineSegments ref={net} geometry={wire} frustumCulled={false} renderOrder={2}>
         <shaderMaterial
           ref={mesh}
           uniforms={lineUniforms}
@@ -427,7 +421,7 @@ export default function EditorAssembly({
 
       <ScrollCue fall={fall} form={assemble} tilt={tilt} plane={plane} />
 
-      <points geometry={geometry} frustumCulled={false} renderOrder={3}>
+      <points ref={cloud} geometry={geometry} frustumCulled={false} renderOrder={3}>
         <shaderMaterial
           ref={dots}
           uniforms={pointUniforms}
