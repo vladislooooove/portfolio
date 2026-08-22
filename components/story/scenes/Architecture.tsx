@@ -5,6 +5,8 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MotionValue } from "motion/react";
 import { measure, settled } from "../laptop";
+import { WIND, cellOf, modelOf, shellSlots, spinOf } from "../system";
+import Platform from "./Platform";
 import type { EditorSurface } from "../editor-surface";
 
 /**
@@ -58,10 +60,13 @@ const CUBE_VERT = /* glsl */ `
   ${BOUNCE}
 
   uniform float uPhase;
+  uniform float uWound;
 
   attribute vec3  aFrom;
   attribute vec3  aLand;
   attribute vec3  aSlot;
+  attribute vec3  aPivot;
+  attribute float aSpin;
   attribute vec3  aTint;
   attribute float aSeed;
 
@@ -74,10 +79,18 @@ const CUBE_VERT = /* glsl */ `
     vec3 down = mix(aFrom, aLand, drop * drop * (3.0 - 2.0 * drop));
     down.y = aLand.y + (aFrom.y - aLand.y) * (1.0 - bounceOut(drop));
 
-    // Gathering, staggered the other way so the core fills first.
+    // Gathering, staggered the other way so the core fills first. The cell is
+    // turned about its own volume's centre by whatever that volume has turned
+    // by, or the swarm lands on where the model used to be.
+    float wind = uWound * aSpin;
+    vec3 rel = aSlot - aPivot;
+    float cw = cos(wind);
+    float sw = sin(wind);
+    vec3 landing = aPivot + vec3(rel.x * cw + rel.z * sw, rel.y, -rel.x * sw + rel.z * cw);
+
     float rise = clamp((uPhase - 0.46 - aSeed * 0.14) / 0.28, 0.0, 1.0);
     float re = rise * rise * (3.0 - 2.0 * rise);
-    vec3 centre = mix(down, aSlot, re);
+    vec3 centre = mix(down, landing, re);
     centre.y += sin(re * 3.14159) * (0.5 + aSeed * 1.1);
 
     // Tumbling on the way down, and squared up again as it takes its place.
@@ -150,7 +163,7 @@ const GLASS_FRAG = /* glsl */ `
     vec3 n = normalize(vNormal);
     float top = max(n.y, 0.0);
     float lit = max(dot(n, normalize(vec3(-0.75, 0.0, 0.66))), 0.0);
-    float tone = 0.30 + top * 0.66 + lit * 0.24;
+    float tone = 0.34 + top * 0.54 + lit * 0.2;
 
     // Light gathered at the top corner nearest the lens, which is the one
     // thing in the reference that says these are lit and not painted.
@@ -158,8 +171,10 @@ const GLASS_FRAG = /* glsl */ `
     float d = distance(vLocal, corner) / uHalf;
     float flare = exp(-d * d * 2.8);
 
-    vec3 col = uColor * tone + uHot * flare * (0.34 + uCore * 0.72);
-    gl_FragColor = vec4(col, uAlpha);
+    // Matte. A strong flare on all seven read as wet plastic; only the core
+    // keeps enough of one to look lit from inside.
+    vec3 col = uColor * tone + uHot * flare * (0.1 + uCore * 0.62);
+    gl_FragColor = vec4(col, uAlpha * uFade);
   }
 `;
 
@@ -209,58 +224,30 @@ export default function Architecture({
   surface,
   plane,
   arch,
+  perf,
+  swing,
 }: {
   surface: EditorSurface;
   plane: { w: number; h: number };
   /** 0 to 1 across scene 4. */
   arch: MotionValue<number>;
+  /** 0 to 1 across scene 5, which is what takes the model away. */
+  perf: MotionValue<number>;
+  /** The closing orbit, which keeps turning the volumes while it runs. */
+  swing: MotionValue<number>;
 }) {
   const cubes = useRef<THREE.ShaderMaterial>(null);
   const signals = useRef<THREE.ShaderMaterial>(null);
   const nodes = useRef<(THREE.Group | null)[]>([]);
   const wires = useRef<THREE.LineBasicMaterial>(null);
-  const plate = useRef<THREE.LineBasicMaterial>(null);
+  const deck = useRef<THREE.Group>(null);
   const tinted = useRef(false);
   const shell = useRef<THREE.Group>(null);
 
   const M = useMemo(() => measure(plane.w, plane.h), [plane.w, plane.h]);
   const frame = useMemo(() => settled(M), [M]);
 
-  /**
-   * The seven volumes: a core with one neighbour out along each axis. Six is
-   * what an octahedron gives you and what the arrangement reads as at this
-   * angle, one behind each shoulder and one over and under.
-   */
-  const model = useMemo(() => {
-    const edge = M.lidW * 0.30;
-    const sat = edge * 0.6;
-    // Clear of the core by more than half its own width. Closer than this and
-    // the two on the vertical axis sit behind it at this angle and read as
-    // slivers rather than as neighbours.
-    const reach = edge * 1.5;
-    const origin = new THREE.Vector3(0, frame.groundY + M.lidW * 0.46, 0);
-    const dirs = [
-      [1, 0, 0],
-      [-1, 0, 0],
-      [0, 1, 0],
-      [0, -1, 0],
-      [0, 0, 1],
-      [0, 0, -1],
-    ];
-    return {
-      origin,
-      edge,
-      sat,
-      nodes: [
-        { at: origin.clone(), size: edge, core: true },
-        ...dirs.map((d) => ({
-          at: origin.clone().add(new THREE.Vector3(d[0], d[1], d[2]).multiplyScalar(reach)),
-          size: sat,
-          core: false,
-        })),
-      ],
-    };
-  }, [M, frame]);
+  const model = useMemo(() => modelOf(M, frame.groundY, frame.base.z), [M, frame]);
 
   /**
    * Every cell of the lid and of the base, where it starts, where it lands and
@@ -269,7 +256,7 @@ export default function Architecture({
    * grid over the whole bounding box plus an inside test would be neither.
    */
   const build = useMemo(() => {
-    const cell = M.lidW / 68;
+    const cell = cellOf(M);
     const from: number[] = [];
     const uv: number[] = [];
 
@@ -312,44 +299,27 @@ export default function Architecture({
     }
 
     // And the cell of the model each one becomes.
-    // Shells, not solids. A cube packed all the way through spends most of
-    // its cells where nobody can see them, and there are only so many cells to
-    // spend: the same count laid over the six faces reads as a cube built out
-    // of blocks instead of as a cloud that is roughly cubic.
-    const slots: number[] = [];
-    for (const node of model.nodes) {
-      const n = Math.max(3, Math.round(node.size / cell));
-      for (let i = 0; i < n; i++) {
-        for (let j = 0; j < n; j++) {
-          for (let k = 0; k < n; k++) {
-            const face =
-              i === 0 || i === n - 1 || j === 0 || j === n - 1 || k === 0 || k === n - 1;
-            if (!face) continue;
-            slots.push(
-              node.at.x + (i + 0.5 - n / 2) * cell,
-              node.at.y + (j + 0.5 - n / 2) * cell,
-              node.at.z + (k + 0.5 - n / 2) * cell,
-            );
-          }
-        }
-      }
-    }
-    for (let i = slots.length / 3 - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      for (let c = 0; c < 3; c++) {
-        const t = slots[i * 3 + c];
-        slots[i * 3 + c] = slots[j * 3 + c];
-        slots[j * 3 + c] = t;
-      }
-    }
+    const shell = shellSlots(model.nodes, cell);
 
+    // Each cube also carries the volume it belongs to, so it can be turned
+    // about that volume's own centre by exactly what the volume is turning by.
     const slot = new Float32Array(count * 3);
-    const total = slots.length / 3;
+    const pivot = new Float32Array(count * 3);
+    const spin = new Float32Array(count);
+    const total = shell.slots.length / 3;
+
     for (let i = 0; i < count; i++) {
       const s = (i % total) * 3;
-      slot[i * 3] = slots[s];
-      slot[i * 3 + 1] = slots[s + 1];
-      slot[i * 3 + 2] = slots[s + 2];
+      slot[i * 3] = shell.slots[s];
+      slot[i * 3 + 1] = shell.slots[s + 1];
+      slot[i * 3 + 2] = shell.slots[s + 2];
+
+      const owner = shell.owner[i % total];
+      const at = model.nodes[owner].at;
+      pivot[i * 3] = at.x;
+      pivot[i * 3 + 1] = at.y;
+      pivot[i * 3 + 2] = at.z;
+      spin[i] = spinOf(owner);
     }
 
     const box = new THREE.BoxGeometry(cell * 0.82, cell * 0.82, cell * 0.82);
@@ -360,6 +330,8 @@ export default function Architecture({
     g.setAttribute("aFrom", new THREE.InstancedBufferAttribute(new Float32Array(from), 3));
     g.setAttribute("aLand", new THREE.InstancedBufferAttribute(land, 3));
     g.setAttribute("aSlot", new THREE.InstancedBufferAttribute(slot, 3));
+    g.setAttribute("aPivot", new THREE.InstancedBufferAttribute(pivot, 3));
+    g.setAttribute("aSpin", new THREE.InstancedBufferAttribute(spin, 1));
     g.setAttribute("aSeed", new THREE.InstancedBufferAttribute(seed, 1));
     g.setAttribute(
       "aTint",
@@ -419,31 +391,11 @@ export default function Architecture({
     [links],
   );
 
-  /** The outline on the ground the whole thing stands over. */
-  const plateGeometry = useMemo(() => {
-    const half = M.lidW * 0.46;
-    const r = half * 0.16;
-    const shape = new THREE.Shape();
-    shape.moveTo(-half + r, -half);
-    shape.lineTo(half - r, -half);
-    shape.quadraticCurveTo(half, -half, half, -half + r);
-    shape.lineTo(half, half - r);
-    shape.quadraticCurveTo(half, half, half - r, half);
-    shape.lineTo(-half + r, half);
-    shape.quadraticCurveTo(-half, half, -half, half - r);
-    shape.lineTo(-half, -half + r);
-    shape.quadraticCurveTo(-half, -half, -half + r, -half);
-    const pts = shape.getPoints(64).map((p) => new THREE.Vector3(p.x, 0, p.y));
-    return new THREE.BufferGeometry().setFromPoints(pts);
-  }, [M]);
-
-  useEffect(() => () => plateGeometry.dispose(), [plateGeometry]);
-
   /**
    * What a volume is drawn with. The reference's look is carried by the edges
    * and the lit points at the corners far more than by the fill, so each one
-   * gets its wireframe, a point at every vertex, and a star from the middle of
-   * its top face out to that face's corners.
+   * gets its wireframe, a point at the middle of every face, and a star from
+   * the centre of its top face out to that face's corners.
    */
   const parts = useMemo(() => {
     const bits = (size: number) => {
@@ -484,7 +436,7 @@ export default function Architecture({
     [parts],
   );
 
-  const cubeUniforms = useMemo(() => ({ uPhase: { value: 0 } }), []);
+  const cubeUniforms = useMemo(() => ({ uPhase: { value: 0 }, uWound: { value: 0 } }), []);
   const signalUniforms = useMemo(
     () => ({
       uTime: { value: 0 },
@@ -501,7 +453,11 @@ export default function Architecture({
     // Through the material, not through the object the JSX was handed: r3f
     // does not keep that object, so mutating it writes to nothing. Every other
     // shader in this sequence reaches its uniforms the same way.
-    if (cubes.current) cubes.current.uniforms.uPhase.value = p;
+    const wound = (p + swing.get()) * WIND;
+    if (cubes.current) {
+      cubes.current.uniforms.uPhase.value = p;
+      cubes.current.uniforms.uWound.value = wound;
+    }
 
     /**
      * The cells on the face of the lid take the colour of the pixel they were
@@ -544,7 +500,9 @@ export default function Architecture({
     // is driven in one sweep. Reaching each of thirty odd materials by its own
     // ref is how one of them ends up never being reached at all, which is
     // exactly what happened to the six outer wireframes.
-    const shown = smoother(span(p, 0.74, 0.9));
+    // Up as the cubes settle, and away again the moment the next scene starts
+    // pulling the same cubes back out of it.
+    const shown = smoother(span(p, 0.74, 0.9)) * (1 - smoother(span(perf.get(), 0, 0.08)));
     shell.current?.traverse((object) => {
       const material = (object as THREE.Mesh).material as
         | (THREE.Material & { uniforms?: Record<string, { value: number }> })
@@ -553,8 +511,12 @@ export default function Architecture({
       if (!material || Array.isArray(material) || weight === undefined) return;
       if (material.uniforms?.uFade) material.uniforms.uFade.value = shown * weight;
       else material.opacity = shown * weight;
+      // Written only once the surface is solid enough to be worth occluding
+      // with, which is the whole of what kept seven overlapping volumes from
+      // sorting against each other.
+      if (material.userData.solid) material.depthWrite = shown > 0.5;
     });
-    if (plate.current) plate.current.opacity = smoother(span(p, 0.5, 0.8)) * 0.5;
+    if (deck.current) deck.current.visible = shown > 0.002;
 
     if (signals.current) {
       signals.current.uniforms.uTime.value = state.clock.elapsedTime;
@@ -562,29 +524,28 @@ export default function Architecture({
       signals.current.uniforms.uSize.value = 90 * state.viewport.dpr;
     }
 
-    /**
-     * The volumes grow into place rather than fading in, and they are opaque
-     * while they do it.
-     *
-     * Seven translucent boxes overlapping each other is a sorting problem with
-     * no good answer: whichever order the renderer picks, one of them ends up
-     * drawn behind a neighbour that has already written depth and survives as
-     * a sliver of itself hanging in the middle of the composition. Opaque
-     * boxes sort by depth, exactly, for free. The scale is what carries the
-     * arrival instead.
-     */
     const t = state.clock.elapsedTime;
+    /**
+     * The six turn where they stand, and only while the reader is moving. On
+     * the clock they carried on turning under a still page, which reads as a
+     * screensaver rather than as something the reader is driving. The scroll
+     * through this chapter and the swing that closes it are what turns them.
+     *
+     * The core does not turn at all: it is the thing the rest are arranged
+     * around. The signals stay on the clock, because a dead wire is not the
+     * same statement as a still cube.
+     */
     nodes.current.forEach((group, i) => {
       if (!group) return;
-      group.scale.setScalar(Math.max(0.0001, shown));
+      group.visible = shown > 0.002;
       if (i === 0) return;
-      // The six turn where they stand once they have somewhere to stand. The
-      // core does not: it is the thing the rest are arranged around.
-      group.rotation.y = t * 0.05 * (i % 2 ? 1 : -1);
-      group.position.y = model.nodes[i].at.y + Math.sin(t * 0.5 + i * 1.7) * model.sat * 0.05;
+      group.rotation.y = wound * (i % 2 ? 1 : -1);
     });
 
-    if (shell.current) shell.current.visible = p > 0.0005;
+    // The group holds the cubes as well as the model, so it cannot be gated on
+    // the model's own fade: doing that took the whole shatter off the screen
+    // for the entire middle of the scene.
+    if (shell.current) shell.current.visible = p > 0.0005 && (p < 0.92 || shown > 0.002);
   });
 
   return (
@@ -626,8 +587,9 @@ export default function Architecture({
                 }}
                 vertexShader={GLASS_VERT}
                 fragmentShader={GLASS_FRAG}
-                transparent={node.core}
-                depthWrite={!node.core}
+                transparent
+                depthWrite={false}
+                userData={{ fade: 1, solid: !node.core }}
               />
             </mesh>
 
@@ -645,6 +607,9 @@ export default function Architecture({
                     }}
                     vertexShader={GLASS_VERT}
                     fragmentShader={GLASS_FRAG}
+                    transparent
+                    depthWrite={false}
+                    userData={{ fade: 1, solid: true }}
                   />
                 </mesh>
                 <lineSegments geometry={parts.coreEdges}>
@@ -710,6 +675,15 @@ export default function Architecture({
         />
       </lineSegments>
 
+      <group ref={deck}>
+        <Platform
+          at={[0, frame.groundY + M.lidW * 0.012, frame.base.z]}
+          w={M.lidW * 0.98}
+          d={M.lidW * 0.84}
+          thick={M.lidW * 0.024}
+        />
+      </group>
+
       <points geometry={links.pulse} frustumCulled={false} renderOrder={5}>
         <shaderMaterial
           ref={signals}
@@ -722,16 +696,6 @@ export default function Architecture({
         />
       </points>
 
-      <lineLoop geometry={plateGeometry} position={[0, frame.groundY + 0.01, 0]}>
-        <lineBasicMaterial
-          ref={plate}
-          color="#c084fc"
-          transparent
-          opacity={0}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </lineLoop>
     </group>
   );
 }

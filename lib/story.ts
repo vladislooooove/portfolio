@@ -23,11 +23,15 @@ const BEATS = {
   /** It orbits around the laptop and rises, onto the three quarter view. */
   turn: [480, 600],
   /** The laptop comes apart into cubes and rebuilds as the system diagram. */
-  architecture: [600, 840],
+  architecture: [600, 830],
+  /** The camera comes round again, onto a second reading of the model. */
+  swing: [830, 900],
+  /** The system comes apart and rebuilds as the dashboard, bars and all. */
+  performance: [940, 1200],
 } as const;
 
 /** In viewport heights. The section is this tall. */
-export const STORY_HEIGHT = 840;
+export const STORY_HEIGHT = 1200;
 
 export type Beat = keyof typeof BEATS;
 
@@ -51,8 +55,8 @@ export const beat = (name: Beat): [number, number] => [
  */
 export const CHAPTERS: { label: string; from?: number; to?: number }[] = [
   { label: "Code", from: 0, to: 600 },
-  { label: "Architecture", from: 600, to: 840 },
-  { label: "Performance" },
+  { label: "Architecture", from: 600, to: 940 },
+  { label: "Performance", from: 940, to: 1200 },
   { label: "Build" },
 ];
 

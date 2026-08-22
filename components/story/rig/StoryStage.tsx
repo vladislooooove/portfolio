@@ -21,6 +21,9 @@ const smoother = (t: number) => {
  */
 const AZIMUTH = THREE.MathUtils.degToRad(42);
 const RISE = THREE.MathUtils.degToRad(22);
+/** And again to close the chapter: the other way round, and a little lower. */
+const SWING = THREE.MathUtils.degToRad(-58);
+const DROP = THREE.MathUtils.degToRad(-6);
 
 /**
  * The camera, which is the whole of scenes 2 and 3. It goes back far enough to
@@ -42,10 +45,14 @@ function Rig({
   pull,
   turn,
   arch,
+  swing,
+  perf,
 }: {
   pull: MotionValue<number>;
   turn: MotionValue<number>;
   arch: MotionValue<number>;
+  swing: MotionValue<number>;
+  perf: MotionValue<number>;
 }) {
   const camera = useThree((state) => state.camera);
   const aim = useRef(new THREE.Vector3());
@@ -56,17 +63,19 @@ function Rig({
     const p = smoother(pull.get());
     const t = smoother(turn.get());
     const a = smoother(arch.get());
+    const w = smoother(swing.get());
+    const f = smoother(perf.get());
 
     aim.current.set(0, -0.68 * p, 0);
     offset.current.set(0, 1.5 * p, 6 + 5.2 * p).sub(aim.current);
 
     if (t > 0) {
       orbit.current.setFromVector3(offset.current);
-      orbit.current.theta -= AZIMUTH * t;
-      orbit.current.phi -= RISE * t;
+      orbit.current.theta -= AZIMUTH * t + SWING * w;
+      orbit.current.phi -= RISE * t + DROP * w;
       // Backs off on the way round. Turned on the spot the object grows into
       // the frame as it opens out, and the base runs off two edges at once.
-      orbit.current.radius *= 1 + 0.2 * t;
+      orbit.current.radius *= (1 + 0.2 * t) * (1 - 0.05 * w);
       offset.current.setFromSpherical(orbit.current);
 
       // And the aim walks from the screen to the middle of the whole object,
@@ -75,13 +84,18 @@ function Rig({
       aim.current.z += 1.3 * t;
     }
 
-    // The model stands where the laptop was but well above it, so the view
-    // rides up onto it rather than leaving it in the top of the frame.
-    if (a > 0) {
-      aim.current.y += 1.62 * a;
-      aim.current.z -= 1.1 * a;
-      offset.current.multiplyScalar(1 + 0.12 * a);
-    }
+    // The model stands where the laptop stood, so the view only rides up onto
+    // it. Backing off as well made the handover read as a cut to a wider shot
+    // rather than as one object replacing another in the same frame.
+    if (a > 0) aim.current.y += 1.85 * a;
+
+    // The dashboard sits on the deck rather than floating over it, so the view
+    // comes back down off the system it replaced. It does not also back off:
+    // that left the whole chapter reading as a wide shot of a small object.
+    // Down as the cubes fall, not after they have landed. Held high through
+    // the drop, the camera watched the system's empty airspace while the whole
+    // shatter piled up off the bottom of the frame.
+    if (f > 0) aim.current.y -= 1.85 * smoother(Math.min(1, perf.get() / 0.4));
 
     camera.position.copy(aim.current).add(offset.current);
     camera.lookAt(aim.current);
@@ -107,6 +121,8 @@ export default function StoryStage({
   pull,
   turn,
   arch,
+  swing,
+  perf,
   reveal,
   type,
   exit,
@@ -118,6 +134,8 @@ export default function StoryStage({
   pull: MotionValue<number>;
   turn: MotionValue<number>;
   arch: MotionValue<number>;
+  swing: MotionValue<number>;
+  perf: MotionValue<number>;
   reveal: MotionValue<number>;
   type: MotionValue<number>;
   exit: MotionValue<number>;
@@ -154,12 +172,14 @@ export default function StoryStage({
         gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
         camera={{ position: [0, 0, 6], fov: 45 }}
       >
-        <Rig pull={pull} turn={turn} arch={arch} />
+        <Rig pull={pull} turn={turn} arch={arch} swing={swing} perf={perf} />
         <Assembly
           assemble={assemble}
           fall={fall}
           pull={pull}
           arch={arch}
+          perf={perf}
+          swing={swing}
           reveal={reveal}
           type={type}
           exit={exit}

@@ -9,6 +9,7 @@ import { TERRAIN } from "../terrain";
 import ScrollCue from "./ScrollCue";
 import Desk from "./Desk";
 import Architecture from "./Architecture";
+import Performance from "./Performance";
 import { markSceneReady } from "@/lib/boot";
 
 /* Scene 1 of the prologue. A dot landscape stands up into a VS Code window,
@@ -144,6 +145,8 @@ export default function Assembly({
   type,
   pull,
   arch,
+  perf,
+  swing,
   exit,
   mx,
   my,
@@ -158,6 +161,10 @@ export default function Assembly({
   pull: MotionValue<number>;
   /** 0 to 1 across scene 4: the laptop coming apart into the system. */
   arch: MotionValue<number>;
+  /** 0 to 1 across scene 5: the system coming apart into the dashboard. */
+  perf: MotionValue<number>;
+  /** The closing orbit of scene 4. */
+  swing: MotionValue<number>;
   /** 0 to 1: how much of the file has been typed. */
   type: MotionValue<number>;
   /** Temporary. Scene 3 takes this range and turns the laptop. */
@@ -410,7 +417,8 @@ export default function Assembly({
   return (
     <group>
       <Desk texture={texture} plane={plane} reveal={reveal} pull={pull} arch={arch} exit={exit} />
-      <Architecture surface={surface} plane={plane} arch={arch} />
+      <Architecture surface={surface} plane={plane} arch={arch} perf={perf} swing={swing} />
+      <Performance plane={plane} perf={perf} />
 
       <lineSegments ref={net} geometry={wire} frustumCulled={false} renderOrder={2}>
         <shaderMaterial

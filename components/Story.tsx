@@ -48,6 +48,8 @@ function Prologue() {
   const pull = useTransform(scrollYProgress, beat("pull"), [0, 1]);
   const turn = useTransform(scrollYProgress, beat("turn"), [0, 1]);
   const arch = useTransform(scrollYProgress, beat("architecture"), [0, 1]);
+  const swing = useTransform(scrollYProgress, beat("swing"), [0, 1]);
+  const perf = useTransform(scrollYProgress, beat("performance"), [0, 1]);
   const exit = useTransform(scrollYProgress, [0.988, 1], [0, 1]);
 
   return (
@@ -70,6 +72,8 @@ function Prologue() {
           pull={pull}
           turn={turn}
           arch={arch}
+          swing={swing}
+          perf={perf}
           reveal={reveal}
           type={type}
           exit={exit}
