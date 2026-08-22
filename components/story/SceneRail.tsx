@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, useMotionValueEvent, useTransform } from "motion/react";
 import type { MotionValue } from "motion/react";
-import { CHAPTERS } from "@/lib/story";
+import { CHAPTERS, chapterAt } from "@/lib/story";
 
 /**
  * Where the reader is in the prologue.
@@ -14,33 +14,34 @@ import { CHAPTERS } from "@/lib/story";
  * the wheel away or ten. This is that, and only that.
  *
  * A rail down the right edge because the page already has one down the left,
- * so the two read as a pair rather than as a new piece of furniture. Ticks are
- * the beats rather than an even scale, which is why they are not evenly
- * spaced: the landscape takes most of the run and the screen resolves quickly.
+ * so the two read as a pair rather than as a new piece of furniture. Four even
+ * steps rather than four true distances: see lib/story for why.
  *
- * The marker travels on a motion value and never touches React. Only the
- * label re-renders, once per chapter.
- *
- * The chapters themselves come from the timeline the scroll ranges are built
- * from, so a beat cannot move without its tick moving with it.
+ * The fill and the marker travel on motion values and never touch React. Only
+ * the active chapter re-renders, three times in the whole sequence.
  */
-const RAIL = "38vh";
+const RAIL = 44;
 
 export default function SceneRail({ progress }: { progress: MotionValue<number> }) {
-  const [chapter, setChapter] = useState(0);
+  const [live, setLive] = useState({ index: 0, local: 0 });
 
   useMotionValueEvent(progress, "change", (v) => {
-    let next = 0;
-    for (let i = 0; i < CHAPTERS.length; i++) if (v >= CHAPTERS[i].at) next = i;
-    setChapter((prev) => (prev === next ? prev : next));
+    const next = chapterAt(v);
+    setLive((prev) =>
+      prev.index === next.index && Math.abs(prev.local - next.local) < 0.02 ? prev : next,
+    );
   });
 
-  const travel = useTransform(progress, [0, 1], ["0vh", RAIL]);
-  const fill = useTransform(progress, [0, 1], [0, 1]);
+  const walk = useTransform(progress, (v) => {
+    const { index, local } = chapterAt(v);
+    return ((index + local) / CHAPTERS.length) * RAIL;
+  });
+  const travel = useTransform(walk, (v) => `${v}vh`);
+  const fill = useTransform(walk, (v) => v / RAIL);
   // Up from the first frame, since the reader needs it most before they have
   // scrolled at all, and out of the way once the prologue has handed over
   // rather than riding up the page with the pin release.
-  const shown = useTransform(progress, [0.9, 0.99], [1, 0]);
+  const shown = useTransform(progress, [0.975, 0.999], [1, 0]);
 
   return (
     <motion.div
@@ -48,32 +49,41 @@ export default function SceneRail({ progress }: { progress: MotionValue<number> 
       className="pointer-events-none absolute top-1/2 right-6 z-10 -translate-y-1/2 md:right-10"
       aria-hidden="true"
     >
-      <div className="relative h-[38vh] w-px bg-line">
+      <div className="relative w-px bg-line" style={{ height: `${RAIL}vh` }}>
         <motion.div
           style={{ scaleY: fill }}
           className="absolute inset-x-0 top-0 h-full origin-top bg-accent"
         />
 
-        {CHAPTERS.map((mark) => (
-          <span
-            key={mark.label}
-            style={{ top: `${mark.at * 100}%` }}
-            className="absolute right-0 h-px w-2 bg-line-control"
-          />
-        ))}
+        {CHAPTERS.map((chapter, i) => {
+          const active = i === live.index;
+          const ahead = chapter.from === undefined;
+          return (
+            <span
+              key={chapter.label}
+              style={{ top: `${(i / CHAPTERS.length) * 100}%` }}
+              className="absolute right-0 flex -translate-y-1/2 items-center gap-3 whitespace-nowrap"
+            >
+              <span
+                className={`font-mono text-[10px] tracking-[0.22em] uppercase transition-colors duration-500 ${
+                  active ? "text-text" : ahead ? "text-line-control" : "text-muted"
+                }`}
+              >
+                {chapter.label}
+              </span>
+              <span
+                className={`h-px w-2 shrink-0 transition-colors duration-500 ${
+                  active ? "bg-glow" : ahead ? "bg-line" : "bg-line-control"
+                }`}
+              />
+            </span>
+          );
+        })}
 
-        <motion.div style={{ y: travel }} className="absolute top-0 right-0">
-          <span className="absolute top-0 right-0 block h-1.5 w-1.5 -translate-y-1/2 translate-x-1/2 bg-glow" />
-          <motion.span
-            key={CHAPTERS[chapter].label}
-            initial={{ opacity: 0, x: 6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute top-0 right-5 block -translate-y-1/2 font-mono text-[10px] tracking-[0.22em] whitespace-nowrap text-muted uppercase"
-          >
-            {CHAPTERS[chapter].label}
-          </motion.span>
-        </motion.div>
+        <motion.span
+          style={{ y: travel }}
+          className="absolute top-0 right-0 block h-1.5 w-1.5 -translate-y-1/2 translate-x-1/2 bg-glow"
+        />
       </div>
     </motion.div>
   );

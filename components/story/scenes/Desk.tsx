@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MotionValue } from "motion/react";
+import { LEAN, OPEN, measure } from "../laptop";
 
 /**
  * Scene 2. The camera pulls back off the screen and the thing the screen is
@@ -27,11 +28,6 @@ import type { MotionValue } from "motion/react";
  * over the scene, settling the object into the world at the same time as the
  * world appears around it.
  */
-
-/** How far the lid opens off the base. A laptop in use sits near this. */
-const OPEN = THREE.MathUtils.degToRad(105);
-/** What that leaves between the lid and vertical, and so what the group turns by. */
-const LEAN = OPEN - Math.PI / 2;
 
 const roundedShape = (w: number, h: number, r: number) => {
   const s = new THREE.Shape();
@@ -206,6 +202,7 @@ export default function Desk({
   plane,
   reveal,
   pull,
+  arch,
   exit,
 }: {
   texture: THREE.Texture;
@@ -214,6 +211,8 @@ export default function Desk({
   reveal: MotionValue<number>;
   /** 0 to 1 across scene 2. */
   pull: MotionValue<number>;
+  /** 0 to 1 across scene 4, which is what takes the laptop away. */
+  arch: MotionValue<number>;
   exit: MotionValue<number>;
 }) {
   const glowMap = useGlow();
@@ -227,25 +226,7 @@ export default function Desk({
   const lights = useRef<THREE.Group>(null);
 
   /** Every measurement on the object comes off the screen it is built around. */
-  const M = useMemo(() => {
-    const W = plane.w;
-    const H = plane.h;
-    const side = W * 0.016;
-    const chin = W * 0.032;
-    const lidW = W + side * 2;
-    const lidH = H + side + chin;
-    const lidT = W * 0.012;
-    const lidCY = (side - chin) / 2;
-    const hingeY = lidCY - lidH / 2;
-    const baseD = lidH * 0.98;
-    const baseT = W * 0.026;
-    const basePos = new THREE.Vector3(
-      0,
-      hingeY + Math.cos(OPEN) * (baseD / 2) - Math.cos(LEAN) * (baseT / 2),
-      -lidT / 2 + Math.sin(OPEN) * (baseD / 2) - Math.sin(LEAN) * (baseT / 2),
-    );
-    return { W, H, side, chin, lidW, lidH, lidT, lidCY, hingeY, baseD, baseT, basePos };
-  }, [plane.w, plane.h]);
+  const M = useMemo(() => measure(plane.w, plane.h), [plane.w, plane.h]);
 
   const lid = useMemo(() => panel(M.lidW, M.lidH, M.lidW * 0.022, M.lidT), [M]);
   const base = useMemo(() => slab(M.lidW, M.baseD, M.lidW * 0.020, M.baseT), [M]);
@@ -382,7 +363,11 @@ export default function Desk({
     // Early, and quick. The camera keeps travelling long after the body is
     // there, so the reader reads the move as the frame opening rather than as
     // anything appearing.
-    const solid = smoother(span(p, 0.03, 0.3)) * gone;
+    const lit = smoother(span(p, 0.03, 0.3)) * gone;
+    // The object goes when it comes apart. The ground it stood on does not:
+    // the cubes have to land on something.
+    const away = 1 - smoother(span(arch.get(), 0, 0.12));
+    const solid = lit * away;
     const settled = smoother(span(p, 0.2, 1));
 
     if (settle.current) settle.current.rotation.x = -LEAN * settled;
@@ -399,7 +384,7 @@ export default function Desk({
 
     if (field.current) {
       field.current.uniforms.uTime.value = state.clock.elapsedTime;
-      field.current.uniforms.uFade.value = solid;
+      field.current.uniforms.uFade.value = lit;
       field.current.uniforms.uReach.value = ground.reach;
       // The ground sits three times further from the lens than the hero's
       // field does, and the size divides by that depth. At the sizes scene 1
@@ -407,17 +392,17 @@ export default function Desk({
       field.current.uniforms.uSize.value = 72 * state.viewport.dpr;
     }
     if (grid.current) {
-      grid.current.uniforms.uFade.value = solid;
+      grid.current.uniforms.uFade.value = lit;
       grid.current.uniforms.uReach.value = ground.reach;
     }
     if (pool.current) pool.current.opacity = solid * 0.55;
 
     if (screen.current) {
-      screen.current.opacity = shown * gone;
+      screen.current.opacity = shown * gone * away;
       screen.current.depthWrite = shown > 0.98;
     }
     if (glow.current) {
-      glow.current.opacity = shown * gone * 0.9 * (1 - smoother(span(p, 0, 0.7)) * 0.72);
+      glow.current.opacity = shown * gone * away * 0.9 * (1 - smoother(span(p, 0, 0.7)) * 0.72);
     }
 
     if (lights.current) {

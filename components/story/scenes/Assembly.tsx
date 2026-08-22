@@ -8,6 +8,7 @@ import { createEditorSurface } from "../editor-surface";
 import { TERRAIN } from "../terrain";
 import ScrollCue from "./ScrollCue";
 import Desk from "./Desk";
+import Architecture from "./Architecture";
 import { markSceneReady } from "@/lib/boot";
 
 /* Scene 1 of the prologue. A dot landscape stands up into a VS Code window,
@@ -142,6 +143,7 @@ export default function Assembly({
   reveal,
   type,
   pull,
+  arch,
   exit,
   mx,
   my,
@@ -154,6 +156,8 @@ export default function Assembly({
   reveal: MotionValue<number>;
   /** 0 to 1 across scene 2: the camera pulling back onto the laptop. */
   pull: MotionValue<number>;
+  /** 0 to 1 across scene 4: the laptop coming apart into the system. */
+  arch: MotionValue<number>;
   /** 0 to 1: how much of the file has been typed. */
   type: MotionValue<number>;
   /** Temporary. Scene 3 takes this range and turns the laptop. */
@@ -401,11 +405,12 @@ export default function Assembly({
     }
   });
 
-  if (!geometry || !texture) return null;
+  if (!surface || !geometry || !texture) return null;
 
   return (
     <group>
-      <Desk texture={texture} plane={plane} reveal={reveal} pull={pull} exit={exit} />
+      <Desk texture={texture} plane={plane} reveal={reveal} pull={pull} arch={arch} exit={exit} />
+      <Architecture surface={surface} plane={plane} arch={arch} />
 
       <lineSegments ref={net} geometry={wire} frustumCulled={false} renderOrder={2}>
         <shaderMaterial

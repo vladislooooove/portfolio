@@ -38,7 +38,15 @@ const RISE = THREE.MathUtils.degToRad(22);
  * r3f's state, which would recompute the viewport and rebuild every buffer
  * measured against it partway down the page.
  */
-function Rig({ pull, turn }: { pull: MotionValue<number>; turn: MotionValue<number> }) {
+function Rig({
+  pull,
+  turn,
+  arch,
+}: {
+  pull: MotionValue<number>;
+  turn: MotionValue<number>;
+  arch: MotionValue<number>;
+}) {
   const camera = useThree((state) => state.camera);
   const aim = useRef(new THREE.Vector3());
   const offset = useRef(new THREE.Vector3());
@@ -47,6 +55,7 @@ function Rig({ pull, turn }: { pull: MotionValue<number>; turn: MotionValue<numb
   useFrame(() => {
     const p = smoother(pull.get());
     const t = smoother(turn.get());
+    const a = smoother(arch.get());
 
     aim.current.set(0, -0.68 * p, 0);
     offset.current.set(0, 1.5 * p, 6 + 5.2 * p).sub(aim.current);
@@ -64,6 +73,14 @@ function Rig({ pull, turn }: { pull: MotionValue<number>; turn: MotionValue<numb
       // which is well forward of it once the deck is in view.
       aim.current.y -= 0.34 * t;
       aim.current.z += 1.3 * t;
+    }
+
+    // The model stands where the laptop was but well above it, so the view
+    // rides up onto it rather than leaving it in the top of the frame.
+    if (a > 0) {
+      aim.current.y += 1.62 * a;
+      aim.current.z -= 1.1 * a;
+      offset.current.multiplyScalar(1 + 0.12 * a);
     }
 
     camera.position.copy(aim.current).add(offset.current);
@@ -89,6 +106,7 @@ export default function StoryStage({
   fall,
   pull,
   turn,
+  arch,
   reveal,
   type,
   exit,
@@ -99,6 +117,7 @@ export default function StoryStage({
   fall: MotionValue<number>;
   pull: MotionValue<number>;
   turn: MotionValue<number>;
+  arch: MotionValue<number>;
   reveal: MotionValue<number>;
   type: MotionValue<number>;
   exit: MotionValue<number>;
@@ -135,11 +154,12 @@ export default function StoryStage({
         gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
         camera={{ position: [0, 0, 6], fov: 45 }}
       >
-        <Rig pull={pull} turn={turn} />
+        <Rig pull={pull} turn={turn} arch={arch} />
         <Assembly
           assemble={assemble}
           fall={fall}
           pull={pull}
+          arch={arch}
           reveal={reveal}
           type={type}
           exit={exit}

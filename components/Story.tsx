@@ -20,8 +20,8 @@ const StoryStage = dynamic(() => import("./story/rig/StoryStage"), { ssr: false 
  * it. In order: the cue drops onto the ground, the landscape flattens and
  * swings up into the shape of the window, the window resolves into a screen,
  * the file is typed, and the camera pulls back onto the laptop the screen
- * turns out to be part of, and the room swings around it onto the three
- * quarter view. The gather starts on the same scroll that takes the
+ * turns out to be part of, the room swings around it onto the three
+ * quarter view, and the laptop comes apart into the system it was built with. The gather starts on the same scroll that takes the
  * cue away, so obeying the cue is what moves the landscape.
  *
  * The fade at the very end is temporary. Scene 3 turns the laptop and takes
@@ -47,6 +47,7 @@ function Prologue() {
   const type = useTransform(scrollYProgress, beat("type"), [0, 1]);
   const pull = useTransform(scrollYProgress, beat("pull"), [0, 1]);
   const turn = useTransform(scrollYProgress, beat("turn"), [0, 1]);
+  const arch = useTransform(scrollYProgress, beat("architecture"), [0, 1]);
   const exit = useTransform(scrollYProgress, [0.988, 1], [0, 1]);
 
   return (
@@ -68,6 +69,7 @@ function Prologue() {
           fall={fall}
           pull={pull}
           turn={turn}
+          arch={arch}
           reveal={reveal}
           type={type}
           exit={exit}
